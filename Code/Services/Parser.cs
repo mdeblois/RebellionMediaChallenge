@@ -179,15 +179,10 @@ namespace RebellionCodeChallenge.Services {
             // first get list of manufacturers,
             var manufacturers = _productTree.Where(_manufacturer => tmpManufacturer.Contains(_manufacturer.CompareValue)).ToList();
 
-            // if there are no manufacturer found, check for manufacturer in title
+            // if there are no manufacturer found, log it
             if (manufacturers.Count == 0) {
-               //manufacturers.AddRange(_productTree.Where(_manufacturer => tmpTitle.Contains(_manufacturer.CompareValue)));
-
-               //if (manufacturers.Count == 0) {
-                  // if there are still no manufacturer, log it
-                  Logger.Instance().Log(string.Format("There are no manufacturer for this listing:{0}", jsonListingString));
-                  continue;
-               //}
+               Logger.Instance().Log(string.Format("There are no manufacturer for this listing:{0}", jsonListingString));
+               continue;
             }
 
             // search model
