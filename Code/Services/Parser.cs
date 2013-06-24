@@ -154,7 +154,7 @@ namespace RebellionCodeChallenge.Services {
 
          // open stream for listings
          var listingsStream = new StreamReader(_listingsFileName);
-         while(!listingsStream.EndOfStream) {
+         while (!listingsStream.EndOfStream) {
             var jsonListingString = listingsStream.ReadLine();
 
             // make sure line has an object
@@ -181,52 +181,92 @@ namespace RebellionCodeChallenge.Services {
 
             // if there are no manufacturer found, check for manufacturer in title
             if (manufacturers.Count == 0) {
-               manufacturers.AddRange(_productTree.Where(_manufacturer => tmpTitle.Contains(_manufacturer.CompareValue)));
+               //manufacturers.AddRange(_productTree.Where(_manufacturer => tmpTitle.Contains(_manufacturer.CompareValue)));
 
-               if (manufacturers.Count == 0) {
+               //if (manufacturers.Count == 0) {
                   // if there are still no manufacturer, log it
                   Logger.Instance().Log(string.Format("There are no manufacturer for this listing:{0}", jsonListingString));
                   continue;
-               }
+               //}
             }
 
             // search model
-            // go through all models of all manufacturers and check if the model is contained within the title.  
-            var matchedProducts = new List<Product>();
+            // go through all models of all manufacturers and check if the model is contained within the title.
+            Node matchedNode = null;
             foreach (var modelNode in manufacturers.SelectMany(_manufacturerNode => _manufacturerNode.Children)) {
                // go through each substring of the title and compare to the model's compare value
                var modelMatched = DoesModelMatch(titleSubStrings, modelNode);
 
-               if (modelMatched) {
-                  // check if there any children
-                  if (modelNode.Children == null) {
-                     // there are no children so this model does not
-                     // belong to multiple families, so just add the product
-                     matchedProducts.Add(modelNode.Product);
-                  } else {
-                     // if there are multiple families for this model, 
-                     // we need to search the listing title for the family
-                     matchedProducts.AddRange(modelNode.Children.Where(_family => tmpTitle.Contains(CleanString(_family.Value))).Select(_family => _family.Product));
-                  }
+               if (!modelMatched) {
+                  continue;
                }
 
+               Node compareNode = null;
+               // first check if there are children
+               if (modelNode.Children != null) {
+                  // there are multiple families for this model, 
+                  // we need to search the listing title for the family
+                  foreach (var family in modelNode.Children) {
+                     var cleanedFamily = CleanString(family.Value);
+                     if (compareNode == null && tmpTitle.Contains(cleanedFamily)) {
+                        // family is found so set the product
+                        compareNode = new Node {CompareValue = modelNode.CompareValue, Value = modelNode.Value, Product = family.Product};
+                     } else if (compareNode != null && tmpTitle.Contains(cleanedFamily)) {
+                        // there are multiple families in the titles which means multiple
+                        // products so need to go to next listing
+                        break;
+                     }
+                  }
+
+                  if (compareNode == null) {
+                     // no family found in title so go to next model
+                     continue;
+                  }
+               } else {
+                  // there are no children so set the compare node 
+                  // to be a copy of the model node
+                  compareNode = new Node {CompareValue = modelNode.CompareValue, Value = modelNode.Value, Product = modelNode.Product};
+               }
+
+               // Now check to see
+               // if this model is a subset or superset of previously matched
+               // model.
+               if (matchedNode != null) {
+                  var compareNodeIndex = tmpTitle.IndexOf(compareNode.CompareValue);
+                  var matchedNodeIndex = tmpTitle.IndexOf(matchedNode.CompareValue);
+                  if ( compareNodeIndex !=  matchedNodeIndex) {
+                     // the indices are different, so this listing is for 
+                     // multiple products and therefore the listing should be skipped
+                     break;
+                  } else {
+                     // if the indices are the same, pick the one which is 
+                     // longest
+                     if (matchedNode.CompareValue.Length < compareNode.CompareValue.Length) {
+                        matchedNode = compareNode;
+                     }
+                  }
+               } else {
+                  // this is the first matched model so no comparison needed
+                  matchedNode = compareNode;
+               }
             }
 
-            if (matchedProducts.Count == 0) {
+            
+            if (matchedNode == null) {
                // still didn't find anything so log it
                Logger.Instance().Log(string.Format("There were no models found for this listing: {0}", jsonListingString));
                continue;
-            }
-
+            } 
+            
             // Add listing to the result
-            foreach (var product in matchedProducts) {
-               if (!_results.ContainsKey(product.ProductName)) {
-                  _results.Add(product.ProductName, new Result {ProductName = product.ProductName, Listings = new List<Listing>()});
-               }
-
-               _results[product.ProductName].Listings.Add(listing);
+            var matchedProduct = matchedNode.Product;
+            if (!_results.ContainsKey(matchedProduct.ProductName)) {
+               _results.Add(matchedProduct.ProductName, new Result { ProductName = matchedProduct.ProductName, Listings = new List<Listing>() });
             }
+
+            _results[matchedProduct.ProductName].Listings.Add(listing);
          }
+
          listingsStream.Close();
          return EStatusCode.Success;
       }
